@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediCore - Dark Mode Hospital System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tab-content { display: none !important; }
+        .tab-content.active { display: flex !important; animation: fadeIn 0.3s ease-in-out; }
+        
+        /* Dark mode custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        .toast-enter { animation: slideIn 0.3s forwards; }
+        .toast-exit { animation: fadeOut 0.3s forwards; }
+        
+        /* Input autofill dark mode fix */
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover, 
+        input:-webkit-autofill:focus, 
+        input:-webkit-autofill:active{
+            -webkit-box-shadow: 0 0 0 30px #111827 inset !important;
+            -webkit-text-fill-color: white !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 h-screen flex overflow-hidden selection:bg-teal-500/30">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-300 z-20 hidden md:flex h-full fixed md:relative shadow-2xl">
+        <div class="p-6 flex items-center gap-3 border-b border-gray-800 bg-gray-950/50">
+            <i class="ph-fill ph-heartbeat text-3xl text-teal-400 drop-shadow-[0_0_8px_rgba(45,212,191,0.5)]"></i>
+            <h1 class="text-xl font-bold tracking-wide text-white">MediCore</h1>
+        </div>
+        <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 px-2">Modules</div>
+            
+            <button onclick="switchTab('search')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all bg-teal-600/20 text-teal-400 border border-teal-500/30 shadow-[0_0_15px_rgba(13,148,136,0.15)]" id="nav-search">
+                <i class="ph ph-magnifying-glass text-xl"></i> Patient Search
+            </button>
+            <button onclick="switchTab('navigation')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-all border border-transparent" id="nav-navigation">
+                <i class="ph ph-map-trifold text-xl"></i> Department Nav
+            </button>
+            <button onclick="switchTab('er')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-all border border-transparent" id="nav-er">
+                <i class="ph ph-ambulance text-xl"></i> Emergency (ER)
+            </button>
+            <button onclick="switchTab('opd')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-all border border-transparent" id="nav-opd">
+                <i class="ph ph-users text-xl"></i> OPD Queue
+            </button>
+            <button onclick="switchTab('doctors')" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-all border border-transparent" id="nav-doctors">
+                <i class="ph ph-stethoscope text-xl"></i> Doctor Roster
+            </button>
+        </nav>
+        <div class="p-4 border-t border-gray-800 text-center text-xs text-gray-600">
+            System v2.0 (Dark Mode)
+        </div>
+    </aside>
+
+    <!-- Mobile Header -->
+    <div class="md:hidden fixed top-0 w-full bg-gray-900 border-b border-gray-800 text-white p-4 flex justify-between items-center z-30">
+        <div class="flex items-center gap-2">
+            <i class="ph-fill ph-heartbeat text-2xl text-teal-400"></i>
+            <span class="font-bold">MediCore</span>
+        </div>
+        <select onchange="switchTab(this.value)" class="bg-gray-800 text-white rounded-lg p-2 text-sm border border-gray-700 outline-none focus:border-teal-500">
+            <option value="search">Patient Search (Binary)</option>
+            <option value="navigation">Department Nav (Graph)</option>
+            <option value="er">Emergency (Priority Q)</option>
+            <option value="opd">OPD Queue (FIFO)</option>
+            <option value="doctors">Doctor Roster (Sort)</option>
+        </select>
+    </div>
+
+    <!-- Main Content -->
+    <main class="flex-1 h-full overflow-y-auto w-full pt-16 md:pt-0 relative bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-gray-900 via-gray-950 to-black">
+        <div class="p-6 md:p-10 max-w-6xl mx-auto h-full">
+            
+            <!-- Toast Container -->
+            <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2"></div>
+
+            <!-- Tab 1: Patient Search (Binary Search) -->
+            <div id="tab-search" class="tab-content active h-full flex flex-col">
+                <header class="mb-8">
+                    <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+                        <div class="p-2 bg-teal-500/10 rounded-lg"><i class="ph-duotone ph-magnifying-glass text-teal-400"></i></div>
+                        Patient Database
+                    </h2>
+                    <p class="text-gray-400 mt-2 text-sm max-w-2xl">Search patient records efficiently using a <span class="text-teal-400 font-mono bg-teal-400/10 px-1 rounded">Binary Search O(log n)</span> algorithm. The database is strictly sorted by Patient ID.</p>
+                </header>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+                    <!-- Add Patient Form -->
+                    <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50 flex flex-col gap-4 h-fit">
+                        <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-3">Add New Patient</h3>
+                        <div class="space-y-3 mt-1">
+                            <div>
+                                <label class="text-xs text-gray-400 ml-1 mb-1 block">Patient ID</label>
+                                <input type="number" id="bs-id" placeholder="e.g. 101" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all placeholder-gray-600">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 ml-1 mb-1 block">Full Name</label>
+                                <input type="text" id="bs-name" placeholder="John Doe" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all placeholder-gray-600">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 ml-1 mb-1 block">Age</label>
+                                <input type="number" id="bs-age" placeholder="Age" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all placeholder-gray-600">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 ml-1 mb-1 block">Diagnosis</label>
+                                <input type="text" id="bs-problem" placeholder="Reason for visit" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all placeholder-gray-600">
+                            </div>
+                            <button onclick="addSearchPatient()" class="w-full bg-teal-600 hover:bg-teal-500 text-white py-3 mt-2 rounded-xl font-medium transition-colors shadow-[0_0_15px_rgba(13,148,136,0.2)]">
+                                Add to Database
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Search and List -->
+                    <div class="lg:col-span-2 flex flex-col gap-6">
+                        <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50">
+                            <h3 class="text-lg font-semibold text-white mb-4">Fast Search</h3>
+                            <div class="flex gap-3">
+                                <div class="relative flex-1">
+                                    <i class="ph ph-hash absolute left-3 top-3.5 text-gray-500 text-lg"></i>
+                                    <input type="number" id="bs-search-target" placeholder="Enter Patient ID to search..." class="w-full p-3 pl-10 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all placeholder-gray-600">
+                                </div>
+                                <button onclick="searchPatient()" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-8 rounded-xl font-medium transition-colors flex items-center gap-2">
+                                    <i class="ph ph-magnifying-glass"></i> Search
+                                </button>
+                            </div>
+                            <div id="bs-search-result" class="mt-4 hidden transition-all">
+                                <!-- Results injected here -->
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-800 p-0 rounded-2xl shadow-lg border border-gray-700/50 flex-1 overflow-hidden flex flex-col">
+                            <div class="p-6 border-b border-gray-700 bg-gray-800 flex justify-between items-center">
+                                <h3 class="text-lg font-semibold text-white">Database Registry</h3>
+                                <span class="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded-md border border-gray-600">Auto-Sorted by ID</span>
+                            </div>
+                            <div class="overflow-y-auto flex-1 p-2">
+                                <table class="w-full text-left border-collapse">
+                                    <thead class="sticky top-0 bg-gray-900 z-10 shadow-sm rounded-lg">
+                                        <tr>
+                                            <th class="p-4 font-semibold text-xs text-gray-400 uppercase tracking-wider rounded-tl-lg">ID</th>
+                                            <th class="p-4 font-semibold text-xs text-gray-400 uppercase tracking-wider">Name</th>
+                                            <th class="p-4 font-semibold text-xs text-gray-400 uppercase tracking-wider">Age</th>
+                                            <th class="p-4 font-semibold text-xs text-gray-400 uppercase tracking-wider rounded-tr-lg">Diagnosis</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bs-db-list" class="text-sm">
+                                        <!-- List injected here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Navigation (Graph) -->
+            <div id="tab-navigation" class="tab-content h-full flex flex-col">
+                <header class="mb-8">
+                    <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+                        <div class="p-2 bg-blue-500/10 rounded-lg"><i class="ph-duotone ph-map-trifold text-blue-400"></i></div>
+                        Facility Navigation
+                    </h2>
+                    <p class="text-gray-400 mt-2 text-sm max-w-2xl">Find the shortest path between hospital departments using <span class="text-blue-400 font-mono bg-blue-400/10 px-1 rounded">Graph BFS (Breadth-First Search)</span>.</p>
+                </header>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+                    <!-- Map/Graph Controls -->
+                    <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50 flex flex-col gap-6">
+                        <div>
+                            <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-3 mb-4">Map Hallway</h3>
+                            <div class="space-y-3">
+                                <input type="text" id="graph-u" placeholder="Dept A (e.g., Reception)" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all">
+                                <div class="flex justify-center text-gray-500 py-1"><i class="ph ph-arrows-down-up"></i></div>
+                                <input type="text" id="graph-v" placeholder="Dept B (e.g., Lab)" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all">
+                                <button onclick="addGraphEdge()" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 mt-2 rounded-xl font-medium transition-colors shadow-[0_0_15px_rgba(37,99,235,0.2)]">
+                                    Link Departments
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex-1 flex flex-col min-h-[200px]">
+                            <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-3 mb-4">Known Layout</h3>
+                            <ul id="graph-edges-list" class="text-sm space-y-2 text-gray-300 bg-gray-900 p-4 rounded-xl flex-1 overflow-y-auto border border-gray-800 shadow-inner custom-scrollbar">
+                                <!-- Edges injected here -->
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Pathfinding Area -->
+                    <div class="lg:col-span-2 flex flex-col gap-6">
+                        <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50">
+                            <h3 class="text-lg font-semibold text-white mb-4">Route Calculator</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                                <div class="col-span-2 relative">
+                                    <label class="block text-xs font-medium text-gray-400 mb-1">Start Location</label>
+                                    <i class="ph-fill ph-map-pin absolute left-3 bottom-3.5 text-blue-500 text-lg"></i>
+                                    <input type="text" id="graph-start" placeholder="e.g., Reception" class="w-full p-3 pl-10 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-blue-500">
+                                </div>
+                                <div class="col-span-2 relative">
+                                    <label class="block text-xs font-medium text-gray-400 mb-1">Destination</label>
+                                    <i class="ph-fill ph-flag-checkered absolute left-3 bottom-3.5 text-green-500 text-lg"></i>
+                                    <input type="text" id="graph-end" placeholder="e.g., Pharmacy" class="w-full p-3 pl-10 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-blue-500">
+                                </div>
+                                <div class="col-span-1">
+                                    <button onclick="findShortestPath()" class="w-full bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white p-3 rounded-xl font-medium transition-colors h-[50px] flex justify-center items-center gap-2">
+                                        Navigate
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Result Visualizer -->
+                        <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50 flex-1 flex flex-col items-center justify-center text-center min-h-[300px] bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LCAyNTUsIDI1NSwgMC4wNSkiLz48L3N2Zz4=')]">
+                            <div id="graph-result-container" class="w-full h-full flex flex-col items-center justify-center p-8 rounded-xl bg-gray-900/50 backdrop-blur-sm border border-gray-800">
+                                <i class="ph-duotone ph-map-pin-line text-7xl text-gray-700 mb-4 drop-shadow-md"></i>
+                                <p class="text-gray-400">Enter locations above to generate a topological route.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Emergency (Priority Queue) -->
+            <div id="tab-er" class="tab-content h-full flex flex-col">
+                <header class="mb-8">
+                    <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+                        <div class="p-2 bg-red-500/10 rounded-lg"><i class="ph-duotone ph-ambulance text-red-500"></i></div>
+                        Emergency Triage (ER)
+                    </h2>
+                    <p class="text-gray-400 mt-2 text-sm max-w-2xl">Dynamically reorder patients based on severity using a <span class="text-red-400 font-mono bg-red-400/10 px-1 rounded">Priority Queue</span>.</p>
+                </header>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+                    <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50 flex flex-col gap-4 h-fit">
+                        <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-3">Admit Patient</h3>
+                        <div class="space-y-3 mt-1">
+                            <input type="text" id="pq-name" placeholder="Patient Name" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-red-500 placeholder-gray-600">
+                            <input type="number" id="pq-age" placeholder="Age" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-red-500 placeholder-gray-600">
+                            <input type="text" id="pq-problem" placeholder="Medical Condition" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-red-500 placeholder-gray-600">
+                            
+                            <div class="pt-2">
+                                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 ml-1">Severity Level</label>
+                                <select id="pq-priority" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-red-500 appearance-none">
+                                    <option value="high">Critical (Level 1) - High Priority</option>
+                                    <option value="low">Standard (Level 2) - Low Priority</option>
+                                </select>
+                            </div>
+
+                            <button onclick="addPriorityPatient()" class="w-full bg-red-600 hover:bg-red-500 text-white py-3 mt-4 rounded-xl font-medium transition-colors shadow-[0_0_15px_rgba(220,38,38,0.2)]">
+                                Add to Triage Queue
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2 bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50 flex flex-col overflow-hidden relative">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-600 to-amber-500"></div>
+                        <div class="flex justify-between items-center mb-6 pl-2">
+                            <div>
+                                <h3 class="text-lg font-semibold text-white">Active Triage Queue</h3>
+                                <p class="text-xs text-gray-400 mt-1">Critical patients are automatically moved to the front.</p>
+                            </div>
+                            <button onclick="renderPriorityQueue()" class="text-xs bg-gray-700 hover:bg-gray-600 border border-gray-600 text-gray-300 px-3 py-2 rounded-lg transition-colors flex items-center gap-1">
+                                <i class="ph-bold ph-arrows-clockwise"></i> Refresh
+                            </button>
+                        </div>
+                        <div class="overflow-y-auto flex-1 space-y-3 pr-2 pl-2" id="pq-list">
+                            <!-- Items injected here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 4: OPD (Standard Queue) -->
+            <div id="tab-opd" class="tab-content h-full flex flex-col">
+                <header class="mb-8">
+                    <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+                        <div class="p-2 bg-indigo-500/10 rounded-lg"><i class="ph-duotone ph-users text-indigo-400"></i></div>
+                        Outpatient Department (OPD)
+                    </h2>
+                    <p class="text-gray-400 mt-2 text-sm max-w-2xl">Manage regular consultations strictly using a <span class="text-indigo-400 font-mono bg-indigo-400/10 px-1 rounded">FIFO Queue (First-In-First-Out)</span>.</p>
+                </header>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1">
+                    <div class="flex flex-col gap-6">
+                        <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50">
+                            <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-3 mb-4 flex items-center gap-2">
+                                <i class="ph-fill ph-ticket text-indigo-400"></i> Generate Token
+                            </h3>
+                            <div class="space-y-4 mt-2">
+                                <input type="text" id="q-name" placeholder="Patient Name" class="w-full p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-indigo-500 placeholder-gray-600">
+                                <div class="flex gap-4">
+                                    <input type="number" id="q-age" placeholder="Age" class="w-1/3 p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-indigo-500 placeholder-gray-600">
+                                    <input type="text" id="q-problem" placeholder="Reason for visit" class="w-2/3 p-3 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-indigo-500 placeholder-gray-600">
+                                </div>
+                                <button onclick="enqueuePatient()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl font-medium transition-all shadow-[0_0_15px_rgba(79,70,229,0.2)]">
+                                    Join Queue (Enqueue)
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-900/80 p-6 rounded-2xl shadow-lg border border-gray-800 flex items-center justify-between relative overflow-hidden group">
+                            <div class="absolute inset-0 bg-indigo-500/5 group-hover:bg-indigo-500/10 transition-colors"></div>
+                            <div class="relative z-10">
+                                <h3 class="text-lg font-semibold text-indigo-400 flex items-center gap-2">
+                                    <i class="ph-fill ph-megaphone"></i> Doctor is ready
+                                </h3>
+                                <p class="text-sm text-gray-500 mt-1">Remove patient from front (Dequeue)</p>
+                            </div>
+                            <button onclick="dequeuePatient()" class="relative z-10 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white px-6 py-3 rounded-xl font-medium transition-colors flex items-center gap-2 shadow-sm">
+                                Call Next
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50 flex flex-col h-full overflow-hidden">
+                        <div class="flex justify-between items-center border-b border-gray-700 pb-4 mb-4">
+                            <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                <i class="ph-duotone ph-armchair"></i> Waiting Lounge
+                            </h3>
+                            <span id="q-count" class="bg-indigo-900/50 border border-indigo-700 text-indigo-300 text-xs font-bold py-1.5 px-3 rounded-lg uppercase tracking-wider">0 Waiting</span>
+                        </div>
+                        <div class="overflow-y-auto flex-1 space-y-3 pr-2" id="q-list">
+                            <!-- Items injected here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 5: Doctors (Sorting) -->
+            <div id="tab-doctors" class="tab-content h-full flex flex-col">
+                <header class="mb-8">
+                    <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+                        <div class="p-2 bg-emerald-500/10 rounded-lg"><i class="ph-duotone ph-stethoscope text-emerald-400"></i></div>
+                        Doctor Roster
+                    </h2>
+                    <p class="text-gray-400 mt-2 text-sm max-w-2xl">Organize medical staff ranking using <span class="text-emerald-400 font-mono bg-emerald-400/10 px-1 rounded">Sorting Arrays</span> by years of experience.</p>
+                </header>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+                    <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50 flex flex-col gap-4 h-fit">
+                        <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-3">Onboard Doctor</h3>
+                        <div class="space-y-3 mt-1">
+                            <div>
+                                <label class="text-xs text-gray-400 ml-1 mb-1 block">Full Name</label>
+                                <div class="relative">
+                                    <i class="ph-fill ph-user-md absolute left-3 top-3.5 text-gray-500"></i>
+                                    <input type="text" id="doc-name" placeholder="e.g., Dr. Smith" class="w-full p-3 pl-10 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-emerald-500 placeholder-gray-600">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 ml-1 mb-1 block">Years of Experience</label>
+                                <div class="relative">
+                                    <i class="ph-fill ph-clock absolute left-3 top-3.5 text-gray-500"></i>
+                                    <input type="number" id="doc-exp" placeholder="e.g. 10" class="w-full p-3 pl-10 rounded-xl bg-gray-900 border border-gray-700 text-white focus:outline-none focus:border-emerald-500 placeholder-gray-600">
+                                </div>
+                            </div>
+                            
+                            <button onclick="addDoctor()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 mt-4 rounded-xl font-medium transition-colors shadow-[0_0_15px_rgba(5,150,105,0.2)]">
+                                Save to Roster
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2 flex flex-col gap-6">
+                        <!-- Top Doctor Highlight -->
+                        <div id="top-doc-card" class="bg-gradient-to-r from-emerald-900 to-gray-800 p-6 rounded-2xl shadow-lg border border-emerald-800/50 text-white hidden relative overflow-hidden">
+                            <div class="absolute -right-4 -top-4 opacity-10">
+                                <i class="ph-fill ph-medal text-9xl"></i>
+                            </div>
+                            <div class="relative z-10 flex items-start justify-between">
+                                <div>
+                                    <h3 class="text-emerald-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-1">
+                                        <i class="ph-fill ph-star"></i> Highest Ranked
+                                    </h3>
+                                    <h2 id="top-doc-name" class="text-2xl font-bold tracking-tight">Dr. Placeholder</h2>
+                                    <div class="mt-3 inline-flex items-center gap-2 bg-emerald-950/50 border border-emerald-800/50 px-3 py-1.5 rounded-lg text-sm text-emerald-200">
+                                        <i class="ph-duotone ph-briefcase"></i> <span id="top-doc-exp">X Years</span>
+                                    </div>
+                                </div>
+                                <div class="bg-gradient-to-br from-emerald-500 to-teal-600 p-4 rounded-full shadow-lg">
+                                    <i class="ph-fill ph-medal text-3xl text-white drop-shadow-md"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sorted List -->
+                        <div class="bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-700/50 flex-1 overflow-hidden flex flex-col">
+                            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                                <h3 class="text-lg font-semibold text-white">Full Roster</h3>
+                                <span class="text-xs font-medium text-gray-500 flex items-center gap-1">
+                                    <i class="ph-bold ph-sort-descending"></i> Sorted by Exp
+                                </span>
+                            </div>
+                            <div class="overflow-y-auto flex-1 pr-2">
+                                <ul id="doc-list" class="space-y-3">
+                                    <!-- List injected here -->
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // Utilities: UI & Toasts
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            // Dark mode toast styling
+            let icon, colorClasses;
+            if (type === 'error') {
+                icon = 'ph-warning-circle text-red-400';
+                colorClasses = 'bg-gray-900 border border-red-900/50 text-gray-100 shadow-[0_4px_20px_rgba(220,38,38,0.15)]';
+            } else {
+                icon = 'ph-check-circle text-teal-400';
+                colorClasses = 'bg-gray-900 border border-teal-900/50 text-gray-100 shadow-[0_4px_20px_rgba(20,184,166,0.15)]';
+            }
+            
+            toast.className = `toast-enter flex items-center gap-3 px-5 py-4 rounded-xl text-sm font-medium ${colorClasses}`;
+            toast.innerHTML = `
+                <i class="ph-fill ${icon} text-xl"></i>
+                ${message}
+            `;
+            container.appendChild(toast);
+            
+        setTimeout(() => {
+            toast.classList.remove('toast-enter');
+            toast.classList.add('toast-exit');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // Tab Navigation Logic (Simulating Pages)
+    function switchTab(tabId) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        
+        // Reset all nav buttons styling (Dark theme classes)
+        document.querySelectorAll('.nav-btn').forEach(el => {
+            el.classList.remove('bg-teal-600/20', 'text-teal-400', 'border-teal-500/30', 'shadow-[0_0_15px_rgba(13,148,136,0.15)]');
+            el.classList.add('text-gray-400', 'hover:bg-gray-800', 'hover:text-gray-200', 'border-transparent');
+        });
+        
+        // Show target tab
+        const targetTab = document.getElementById(`tab-${tabId}`);
+        if (targetTab) targetTab.classList.add('active');
+        
+        // Highlight active nav button
+        const activeNav = document.getElementById(`nav-${tabId}`);
+        if(activeNav) {
+            activeNav.classList.remove('text-gray-400', 'hover:bg-gray-800', 'hover:text-gray-200', 'border-transparent');
+            activeNav.classList.add('bg-teal-600/20', 'text-teal-400', 'border-teal-500/30', 'shadow-[0_0_15px_rgba(13,148,136,0.15)]');
+        }
+
+        // Sync mobile dropdown (if used on smaller screens)
+        const mobileSelect = document.querySelector('select');
+        if (mobileSelect) mobileSelect.value = tabId;
+    }
+
+    // --- MODULE 1: Binary Search (Patient Search) ---
+    let searchDb = [
+            { id: 101, name: "Alice Johnson", age: 34, problem: "Fever" },
+            { id: 105, name: "Bob Smith", age: 45, problem: "Cough" },
+            { id: 210, name: "Charlie Brown", age: 29, problem: "Fracture" },
+            { id: 304, name: "Diana Prince", age: 30, problem: "Checkup" }
+        ];
+
+        function renderSearchDb() {
+            // Sort database by ID (Requirement for binary search)
+            searchDb.sort((a, b) => a.id - b.id);
+            const tbody = document.getElementById('bs-db-list');
+            tbody.innerHTML = '';
+            
+            searchDb.forEach((p, index) => {
+                const bgClass = index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-800/50';
+                tbody.innerHTML += `
+                    <tr class="${bgClass} hover:bg-gray-700 transition-colors border-b border-gray-700/50 last:border-0">
+                        <td class="p-4 font-mono text-teal-400">${p.id}</td>
+                        <td class="p-4 text-gray-200 font-medium">${p.name}</td>
+                        <td class="p-4 text-gray-400">${p.age}</td>
+                        <td class="p-4 text-gray-500">${p.problem}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function addSearchPatient() {
+            const id = parseInt(document.getElementById('bs-id').value);
+            const name = document.getElementById('bs-name').value.trim();
+            const age = parseInt(document.getElementById('bs-age').value);
+            const problem = document.getElementById('bs-problem').value.trim();
+
+            if(!id || !name || !age || !problem) return showToast('Please fill all fields', 'error');
+            if(searchDb.find(p => p.id === id)) return showToast('Patient ID already exists', 'error');
+
+            searchDb.push({ id, name, age, problem });
+            
+            document.getElementById('bs-id').value = '';
+            document.getElementById('bs-name').value = '';
+            document.getElementById('bs-age').value = '';
+            document.getElementById('bs-problem').value = '';
+            
+            renderSearchDb();
+            showToast('Patient added successfully');
+        }
+
+        function searchPatient() {
+            const target = parseInt(document.getElementById('bs-search-target').value);
+            if(!target) return showToast('Enter an ID to search', 'error');
+
+            const resDiv = document.getElementById('bs-search-result');
+            resDiv.classList.remove('hidden');
+            
+            // Binary Search Algorithm O(log n)
+            let l = 0;
+            let r = searchDb.length - 1;
+            let found = null;
+
+            while (l <= r) {
+                let m = Math.floor(l + (r - l) / 2);
+                if (searchDb[m].id === target) {
+                    found = searchDb[m];
+                    break;
+                }
+                if (searchDb[m].id < target) {
+                    l = m + 1;
+                } else {
+                    r = m - 1;
+                }
+            }
+
+            // Dark Mode Results Rendering
+            if (found) {
+                resDiv.className = "mt-4 p-5 rounded-xl bg-teal-900/20 border border-teal-800/50 shadow-inner";
+                resDiv.innerHTML = `
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2 text-teal-400 font-semibold">
+                            <i class="ph-fill ph-check-circle text-lg"></i> Record Found
+                        </div>
+                        <span class="text-xs font-mono bg-teal-900/50 text-teal-300 px-2 py-1 rounded border border-teal-800">ID: ${found.id}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-800">
+                            <p class="text-xs text-gray-500 uppercase tracking-wide">Patient Name</p>
+                            <p class="text-gray-200 font-medium">${found.name}</p>
+                        </div>
+                        <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-800">
+                            <p class="text-xs text-gray-500 uppercase tracking-wide">Details</p>
+                            <p class="text-gray-300 text-sm">Age ${found.age} • ${found.problem}</p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                resDiv.className = "mt-4 p-4 rounded-xl bg-red-900/20 border border-red-800/50 flex items-center gap-3";
+                resDiv.innerHTML = `
+                    <i class="ph-fill ph-warning-circle text-red-400 text-2xl"></i>
+                    <span class="text-red-300 font-medium">No patient found with ID ${target}.</span>
+                `;
+            }
+        }
+
+        // --- MODULE 2: Graph (Shortest Path BFS) ---
+        const graph = new Map();
+
+        function initializeGraph() {
+            const edges = [
+                ['Reception', 'ER'], ['Reception', 'WaitingArea'], 
+                ['ER', 'ICU'], ['ER', 'Surgery'],
+                ['WaitingArea', 'OPD'], ['WaitingArea', 'Lab'],
+                ['Lab', 'Pharmacy'], ['OPD', 'Pharmacy'],
+                ['ICU', 'Ward'], ['Surgery', 'Ward']
+            ];
+            edges.forEach(([u, v]) => addEdgeSilent(u, v));
+            renderGraphEdges();
+        }
+
+        function addEdgeSilent(u, v) {
+            if (!graph.has(u)) graph.set(u, []);
+            if (!graph.has(v)) graph.set(v, []);
+            if (!graph.get(u).includes(v)) graph.get(u).push(v);
+            if (!graph.get(v).includes(u)) graph.get(v).push(u);
+        }
+
+        function addGraphEdge() {
+            const u = document.getElementById('graph-u').value.trim();
+            const v = document.getElementById('graph-v').value.trim();
+            
+            if(!u || !v) return showToast('Enter both departments', 'error');
+            
+            addEdgeSilent(u, v);
+            
+            document.getElementById('graph-u').value = '';
+            document.getElementById('graph-v').value = '';
+            
+            renderGraphEdges();
+            showToast('Path added successfully');
+        }
+
+        function renderGraphEdges() {
+            const list = document.getElementById('graph-edges-list');
+            list.innerHTML = '';
+            let printedEdges = new Set();
+
+            graph.forEach((neighbors, node) => {
+                neighbors.forEach(neighbor => {
+                    const edgeStr = [node, neighbor].sort().join('-');
+                    if(!printedEdges.has(edgeStr)) {
+                        printedEdges.add(edgeStr);
+                        list.innerHTML += `
+                            <li class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-800 transition-colors">
+                                <span class="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></span>
+                                <span class="text-gray-200 font-medium">${node}</span>
+                                <i class="ph ph-arrows-left-right text-gray-600 text-xs"></i>
+                                <span class="text-gray-200 font-medium">${neighbor}</span>
+                            </li>
+                        `;
+                    }
+                });
+            });
+        }
+
+        function findShortestPath() {
+            const start = document.getElementById('graph-start').value.trim();
+            const target = document.getElementById('graph-end').value.trim();
+            const container = document.getElementById('graph-result-container');
+
+            if (!start || !target) return showToast('Enter Start and Destination', 'error');
+
+            if (!graph.has(start) || !graph.has(target)) {
+                container.innerHTML = `
+                    <div class="bg-gray-900/80 backdrop-blur border border-red-900/50 p-6 rounded-xl flex flex-col items-center">
+                        <i class="ph-duotone ph-warning text-5xl text-red-500 mb-4 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]"></i>
+                        <p class="text-red-400 font-medium text-lg">Unknown Location</p>
+                        <p class="text-sm text-gray-500 mt-2 text-center max-w-xs">One or both departments don't exist in the system. Check spelling or add them.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // BFS Algorithm
+            const q = [start];
+            const p = new Map(); // parent map
+            const vis = new Set([start]);
+            let found = false;
+
+            while (q.length > 0) {
+                const curr = q.shift();
+                
+                if (curr === target) {
+                    found = true;
+                    break;
+                }
+
+                const neighbors = graph.get(curr) || [];
+                for (const nxt of neighbors) {
+                    if (!vis.has(nxt)) {
+                        vis.add(nxt);
+                        p.set(nxt, curr);
+                        q.push(nxt);
+                    }
+                }
+            }
+
+            if (found) {
+                const ans = [];
+                let temp = target;
+                while (temp) {
+                    ans.push(temp);
+                    temp = p.get(temp);
+                }
+                ans.reverse();
+
+                let html = `
+                    <div class="bg-gray-900/80 backdrop-blur-md border border-gray-700/50 p-8 rounded-2xl w-full max-w-lg shadow-2xl">
+                        <h4 class="text-gray-400 text-sm font-semibold uppercase tracking-widest mb-6 text-center border-b border-gray-800 pb-3">Optimal Route Discovered</h4>
+                        <div class="flex flex-col gap-2 relative">
+                            <div class="absolute left-6 top-6 bottom-6 w-0.5 bg-gray-800 z-0"></div>
+                `;
+                
+                ans.forEach((node, index) => {
+                    const isFirst = index === 0;
+                    const isLast = index === ans.length - 1;
+                    
+                    let icon = 'ph-dots-three';
+                    let iconColor = 'text-gray-500';
+                    let nodeColor = 'text-gray-300';
+                    let bgRing = 'bg-gray-900 border-gray-700';
+
+                    if (isFirst) {
+                        icon = 'ph-map-pin';
+                        iconColor = 'text-blue-400';
+                        nodeColor = 'text-blue-300 font-semibold';
+                        bgRing = 'bg-blue-900/30 border-blue-500/50';
+                    } else if (isLast) {
+                        icon = 'ph-flag-checkered';
+                        iconColor = 'text-green-400';
+                        nodeColor = 'text-green-300 font-semibold';
+                        bgRing = 'bg-green-900/30 border-green-500/50';
+                    }
+
+                    html += `
+                        <div class="flex items-center gap-4 relative z-10 p-2 rounded-lg ${isFirst || isLast ? 'bg-gray-800/50' : 'hover:bg-gray-800'} transition-colors">
+                            <div class="w-8 h-8 rounded-full border-2 ${bgRing} flex items-center justify-center shrink-0 shadow-lg">
+                                <i class="ph-fill ${icon} ${iconColor} text-sm"></i>
+                            </div>
+                            <div class="flex-1 ${nodeColor}">${node}</div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                        <div class="mt-8 pt-4 border-t border-gray-800 flex justify-center">
+                            <span class="inline-flex items-center gap-2 bg-blue-900/20 text-blue-400 text-sm font-mono px-4 py-2 rounded-lg border border-blue-800/30">
+                                <i class="ph-bold ph-person-simple-walk"></i> ${ans.length - 1} Transit Steps
+                            </span>
+                        </div>
+                    </div>`;
+
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = `
+                    <div class="bg-gray-900/80 backdrop-blur border border-red-900/50 p-6 rounded-xl flex flex-col items-center">
+                        <i class="ph-duotone ph-path text-5xl text-red-500 mb-4"></i>
+                        <p class="text-red-400 font-medium">No Route Possible</p>
+                        <p class="text-sm text-gray-500 mt-1">There is no connecting path between ${start} and ${target}.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // --- MODULE 3: Priority Queue (Emergency) ---
+        let highQ = [
+            { name: "John Doe", age: 55, problem: "Cardiac Arrest", priority: "high", timestamp: Date.now() - 10000 }
+        ];
+        let lowQ = [
+            { name: "Jane Smith", age: 24, problem: "Sprained Ankle", priority: "low", timestamp: Date.now() }
+        ];
+
+        function addPriorityPatient() {
+            const name = document.getElementById('pq-name').value.trim();
+            const age = parseInt(document.getElementById('pq-age').value);
+            const problem = document.getElementById('pq-problem').value.trim();
+            const priority = document.getElementById('pq-priority').value;
+
+            if(!name || !age || !problem) return showToast('Fill all fields', 'error');
+
+            const p = { name, age, problem, priority, timestamp: Date.now() };
+            
+            if (priority === "high") {
+                highQ.push(p);
+            } else {
+                lowQ.push(p);
+            }
+
+            document.getElementById('pq-name').value = '';
+            document.getElementById('pq-age').value = '';
+            document.getElementById('pq-problem').value = '';
+
+            renderPriorityQueue();
+            showToast('Patient added to Triage');
+        }
+
+        function renderPriorityQueue() {
+            const list = document.getElementById('pq-list');
+            list.innerHTML = '';
+            
+            // Priority Queue Logic: Combine queues (High Priority always first)
+            const finalQueue = [...highQ, ...lowQ];
+            
+            if(finalQueue.length === 0) {
+                list.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-48 text-gray-500">
+                        <i class="ph-duotone ph-check-circle text-4xl mb-2 opacity-50"></i>
+                        <p>ER Queue is clear.</p>
+                    </div>`;
+                return;
+            }
+
+            finalQueue.forEach((p, i) => {
+                const isHigh = p.priority === 'high';
+                const borderColor = isHigh ? 'border-red-900/50' : 'border-amber-900/50';
+                const bgColor = isHigh ? 'bg-red-950/20' : 'bg-amber-950/10';
+                const badgeClass = isHigh ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+                const icon = isHigh ? 'ph-warning-circle text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]' : 'ph-clock text-amber-500';
+                
+                list.innerHTML += `
+                    <div class="flex items-center gap-4 p-4 rounded-xl border ${borderColor} ${bgColor} hover:bg-gray-800 transition-colors group">
+                        <div class="text-xl font-black text-gray-700 group-hover:text-gray-500 transition-colors w-8 text-center font-mono">${i+1}</div>
+                        <div class="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center border border-gray-700 shadow-inner shrink-0">
+                            <i class="ph-fill ${icon} text-xl"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-baseline gap-2">
+                                <h4 class="font-bold text-gray-200 text-lg">${p.name}</h4>
+                                <span class="text-xs text-gray-500 font-mono">Age ${p.age}</span>
+                            </div>
+                            <p class="text-sm text-gray-400 mt-0.5">${p.problem}</p>
+                        </div>
+                        <span class="text-[10px] font-bold uppercase px-2 py-1 rounded-md tracking-wider ${badgeClass}">
+                            ${p.priority}
+                        </span>
+                    </div>
+                `;
+            });
+        }
+
+        // --- MODULE 4: Regular Queue (OPD) ---
+        let opdQueue = [
+            { name: "Emily Clark", age: 40, problem: "General Consultation" },
+            { name: "Michael Lee", age: 35, problem: "Blood Test Follow-up" },
+            { name: "Sarah Connor", age: 28, problem: "Routine Checkup" }
+        ];
+
+        function renderQueue() {
+            const list = document.getElementById('q-list');
+            document.getElementById('q-count').innerText = `${opdQueue.length} Waiting`;
+            list.innerHTML = '';
+            
+            if(opdQueue.length === 0) {
+                list.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full text-gray-600 mt-10">
+                        <i class="ph-duotone ph-coffee text-5xl mb-3 opacity-30"></i>
+                        <p class="text-sm">Lounge is currently empty.</p>
+                    </div>`;
+                return;
+            }
+
+            opdQueue.forEach((p, i) => {
+                const isFirst = i === 0;
+                const containerStyle = isFirst 
+                    ? 'border-indigo-500/50 bg-indigo-900/10 shadow-[0_4px_15px_rgba(99,102,241,0.1)]' 
+                    : 'border-gray-700/50 bg-gray-900/30 hover:bg-gray-800/80';
+                
+                const numberStyle = isFirst ? 'text-indigo-400 drop-shadow-[0_0_5px_rgba(129,140,248,0.5)]' : 'text-gray-600';
+
+                list.innerHTML += `
+                    <div class="flex items-center gap-4 p-4 rounded-xl border ${containerStyle} relative overflow-hidden transition-all duration-300">
+                        ${isFirst ? '<div class="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>' : ''}
+                        
+                        <div class="${numberStyle} text-2xl font-black font-mono w-8 text-center shrink-0">${i+1}</div>
+                        
+                        <div class="flex-1 min-w-0">
+                            <h4 class="font-semibold text-gray-200 truncate flex items-center gap-2">
+                                ${p.name} 
+                                <span class="text-[10px] font-mono text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Age ${p.age}</span>
+                            </h4>
+                            <p class="text-sm text-gray-400 mt-1 truncate"><i class="ph-fill ph-clipboard-text text-gray-500 mr-1"></i>${p.problem}</p>
+                        </div>
+                        
+                        ${isFirst ? '<span class="ml-2 text-[10px] font-bold text-indigo-300 bg-indigo-900/50 border border-indigo-500/30 px-2 py-1 rounded uppercase tracking-wider animate-pulse">Now Calling</span>' : ''}
+                    </div>
+                `;
+            });
+        }
+
+        function enqueuePatient() {
+            const name = document.getElementById('q-name').value.trim();
+            const age = parseInt(document.getElementById('q-age').value);
+            const problem = document.getElementById('q-problem').value.trim();
+
+            if(!name || !age || !problem) return showToast('Fill all fields', 'error');
+
+            opdQueue.push({ name, age, problem });
+            
+            document.getElementById('q-name').value = '';
+            document.getElementById('q-age').value = '';
+            document.getElementById('q-problem').value = '';
+            
+            renderQueue();
+            showToast(`${name} received token #${opdQueue.length}`);
+        }
+
+        function dequeuePatient() {
+            if(opdQueue.length === 0) return showToast('No patients in queue', 'error');
+            
+            const p = opdQueue.shift(); // Standard Queue Logic: Remove from front (FIFO)
+            renderQueue();
+            showToast(`Called ${p.name} inside!`);
+        }
+
+        // --- MODULE 5: Sorting (Doctor Roster) ---
+        let doctors = [
+            { name: "Dr. Sarah Jenkins", experience: 12 },
+            { name: "Dr. Robert Ford", experience: 4 },
+            { name: "Dr. William Gregory", experience: 25 },
+            { name: "Dr. Emily Wong", experience: 8 }
+        ];
+
+        function addDoctor() {
+            const name = document.getElementById('doc-name').value.trim();
+            const experience = parseInt(document.getElementById('doc-exp').value);
+
+            if(!name || isNaN(experience)) return showToast('Fill all fields correctly', 'error');
+
+            doctors.push({ name, experience });
+            
+            document.getElementById('doc-name').value = '';
+            document.getElementById('doc-exp').value = '';
+            
+            renderDoctors();
+            showToast('Doctor profile created');
+        }
+
+        function renderDoctors() {
+            // Array Sorting Algorithm: Higher experience first
+            doctors.sort((a, b) => b.experience - a.experience);
+            
+            const list = document.getElementById('doc-list');
+            list.innerHTML = '';
+            
+            const topDocCard = document.getElementById('top-doc-card');
+
+            if(doctors.length === 0) {
+                topDocCard.classList.add('hidden');
+                list.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="ph-duotone ph-user-minus text-4xl mb-2 opacity-50"></i>
+                        <p>No doctors on roster.</p>
+                    </div>`;
+                return;
+            }
+
+            // Highlight top doctor
+            topDocCard.classList.remove('hidden');
+            document.getElementById('top-doc-name').innerText = doctors[0].name;
+            document.getElementById('top-doc-exp').innerHTML = `${doctors[0].experience} Years Exp`;
+
+            // Render remaining list
+            doctors.forEach((d, i) => {
+                const isTop = i === 0;
+                list.innerHTML += `
+                    <li class="flex items-center justify-between p-4 rounded-xl border ${isTop ? 'border-emerald-800/30 bg-emerald-900/10' : 'border-gray-700/50 bg-gray-900/30'} hover:bg-gray-800 transition-colors">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-full ${isTop ? 'bg-emerald-900/50 text-emerald-400 border-emerald-700/50' : 'bg-gray-800 text-gray-500 border-gray-700'} border flex items-center justify-center font-bold text-lg shadow-inner">
+                                #${i+1}
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-gray-200 text-lg">${d.name}</h4>
+                                <p class="text-xs text-gray-500 uppercase tracking-wide flex items-center gap-1 mt-0.5">
+                                    <i class="ph-fill ph-stethoscope"></i> Senior Physician
+                                </p>
+                            </div>
+                        </div>
+                        <div class="text-right bg-gray-900 p-2 rounded-lg border border-gray-800 min-w-[70px]">
+                            <span class="block font-bold text-gray-300 font-mono text-lg leading-tight">${d.experience}</span>
+                            <span class="text-[10px] text-gray-500 uppercase">Years</span>
+                        </div>
+                    </li>
+                `;
+            });
+        }
+
+        // Initialize Everything on Load
+        window.onload = function() {
+            renderSearchDb();
+            initializeGraph();
+            renderPriorityQueue();
+            renderQueue();
+            renderDoctors();
+        };
+
+    </script>
+</body>
+</html>
